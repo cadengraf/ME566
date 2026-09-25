@@ -3,9 +3,9 @@ import numpy as np
 
 # Shi-Tomasi Corner Detection and address repeatability, speed, number of features to detect. 
 class ShiTomasi:
-    def __init__(self, max_corners=2000):
+    def __init__(self, max_corners=2000, quality_level=0.01):
         self.max_corners = max_corners
-        self.quality_level = 0.01
+        self.quality_level = quality_level
         self.min_distance = 5
         self.block_size = 3
 

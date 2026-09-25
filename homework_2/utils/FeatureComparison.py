@@ -24,6 +24,22 @@ ShiTomasi = import_module(".Shi-Tomasi", __package__).ShiTomasi
 METHODS = ("DoG", "Harris", "Shi-Tomasi", "FAST")
 DESCRIPTORS = ("SIFT", "BRIEF", "ORB")
 
+# Edit these through comparison.SETTINGS in the notebook, then rerun the result cells.
+SETTINGS = {
+    "dog_threshold": 0.03,
+    "harris_threshold": 0.01,
+    "shi_quality": 0.01,
+    "fast_threshold": 20,
+    "registration_ratio": 0.7,
+    "ransac_pixels": 3.0,
+    "repeatability_pixels": 5.0,
+    "geometric_match_pixels": 5.0,
+    "match_ratio": 0.75,
+    "anms_keep": 300,
+    "anms_robust": 0.9,
+}
+
+
 
 def load_sequences(root):
     """Read recorded camera frames in numeric order; no image transformation."""
@@ -87,13 +103,13 @@ def show_detector_views(sequences, motion):
 def detect(gray, method):
     if method == "DoG":
         return DoGFeatureDetector(min_sigma=1, max_sigma=12,
-                                  threshold=0.03).detect_points(gray)
+                                  threshold=SETTINGS["dog_threshold"]).detect_points(gray)
     if method == "Harris":
-        return HarrisFeatureDetector().detect_points(gray)
+        return HarrisFeatureDetector().detect_points(gray, threshold=SETTINGS["harris_threshold"])
     if method == "Shi-Tomasi":
-        return ShiTomasi(max_corners=2000).detect_points(gray)
+        return ShiTomasi(max_corners=2000, quality_level=SETTINGS["shi_quality"]).detect_points(gray)
     if method == "FAST":
-        return FAST(threshold=20, nonmaxSupression=True).detect_points(gray)
+        return FAST(threshold=SETTINGS["fast_threshold"], nonmaxSupression=True).detect_points(gray)
     raise ValueError(method)
 
 
@@ -117,16 +133,18 @@ def homography(a, b):
         return None
     pairs = cv2.BFMatcher(cv2.NORM_L2).knnMatch(da, db, k=2)
     good = [m for pair in pairs if len(pair) == 2
-            for m, n in [pair] if m.distance < 0.7 * n.distance]
+            for m, n in [pair] if m.distance < SETTINGS["registration_ratio"] * n.distance]
     if len(good) < 4:
         return None
     src = np.float32([ka[m.queryIdx].pt for m in good])
     dst = np.float32([kb[m.trainIdx].pt for m in good])
-    H, inliers = cv2.findHomography(src, dst, cv2.RANSAC, 3.0)
+    H, inliers = cv2.findHomography(src, dst, cv2.RANSAC, SETTINGS["ransac_pixels"])
     return H if inliers is not None and inliers.sum() >= 10 else None
 
 
-def repeatability(reference, target, H, shape, tolerance=5):
+def repeatability(reference, target, H, shape, tolerance=None):
+    if tolerance is None:
+        tolerance = SETTINGS["repeatability_pixels"]
     if H is None or not len(reference) or not len(target):
         return np.nan
     projected = cv2.perspectiveTransform(reference.reshape(-1, 1, 2), H).reshape(-1, 2)
@@ -204,7 +222,8 @@ def show_detector_results(results):
 def _keypoints(gray):
     points, strengths = detect(gray, "Harris")
     return [cv2.KeyPoint(float(x), float(y), 16)
-            for x, y in anms(points, strengths, keep=300)]
+            for x, y in anms(points, strengths, keep=SETTINGS["anms_keep"],
+                             robust=SETTINGS["anms_robust"])]
 
 
 def _descriptor(gray, kind):
@@ -230,7 +249,7 @@ def _match_labels(a, b, kind, H):
             continue
         m, n = pair
         ratios.append(m.distance / max(n.distance, 1e-12))
-        labels.append(np.linalg.norm(projected[m.queryIdx] - kb[m.trainIdx].pt) <= 5)
+        labels.append(np.linalg.norm(projected[m.queryIdx] - kb[m.trainIdx].pt) <= SETTINGS["geometric_match_pixels"])
     return np.asarray(ratios), np.asarray(labels, bool), (perf_counter() - start) * 1000
 
 
@@ -247,7 +266,9 @@ def compare_descriptors(sequences):
     return records
 
 
-def show_confusion_matrices(records, ratio_threshold=0.75):
+def show_confusion_matrices(records, ratio_threshold=None):
+    if ratio_threshold is None:
+        ratio_threshold = SETTINGS["match_ratio"]
     for kind in DESCRIPTORS:
         rows = [row for row in records if row[1] == kind]
         if not rows:
@@ -324,8 +345,10 @@ def show_descriptor_visualization(image):
     plt.close(fig)
 
 
-def show_match_visualization(a, b, H, ratio_threshold=0.75, limit=30):
+def show_match_visualization(a, b, H, ratio_threshold=None, limit=30):
     """Show accepted correspondences, green for geometrically right and red for wrong."""
+    if ratio_threshold is None:
+        ratio_threshold = SETTINGS["match_ratio"]
     fig, axes = plt.subplots(3, 1, figsize=(15, 14))
     for ax, kind in zip(axes, DESCRIPTORS):
         ka, da = _descriptor(a, kind)
@@ -347,7 +370,7 @@ def show_match_visualization(a, b, H, ratio_threshold=0.75, limit=30):
                 x1, y1 = ka[m.queryIdx].pt
                 x2, y2 = kb[m.trainIdx].pt
                 right = (projected is not None and
-                         np.linalg.norm(projected[m.queryIdx] - (x2, y2)) <= 5)
+                         np.linalg.norm(projected[m.queryIdx] - (x2, y2)) <= SETTINGS["geometric_match_pixels"])
                 correct += right
                 color = "#52e080" if right else "#ff5b5b"
                 ax.plot((x1, x2 + a.shape[1]), (y1, y2), color=color,
@@ -355,13 +378,15 @@ def show_match_visualization(a, b, H, ratio_threshold=0.75, limit=30):
             ax.set_title(f"{kind}: {len(accepted)} accepted; displayed {min(limit, len(accepted))} "
                          f"best ratios ({correct} geometrically right)")
         ax.axis("off")
-    fig.suptitle("Ratio < 0.75 | green: within 5 px of homography | red: farther away")
+    fig.suptitle(f"Ratio < {ratio_threshold:g} | green: within {SETTINGS['geometric_match_pixels']:g} px of homography")
     fig.tight_layout()
     plt.show()
     plt.close(fig)
 
 
-def show_descriptor_summary(records, ratio_threshold=0.75):
+def show_descriptor_summary(records, ratio_threshold=None):
+    if ratio_threshold is None:
+        ratio_threshold = SETTINGS["match_ratio"]
     """Plot matching speed and quality next to three labeled confusion matrices."""
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     for col, kind in enumerate(DESCRIPTORS):
@@ -394,7 +419,7 @@ def show_descriptor_summary(records, ratio_threshold=0.75):
         ax.set_title(f"{mean_ms:.1f} ms/pair | {len(labels)} candidates")
         for i, value in enumerate((precision, recall)):
             ax.text(i, value + 0.02, f"{value:.2f}", ha="center")
-    fig.suptitle("Shared Harris + ANMS detections | ratio threshold 0.75")
+    fig.suptitle(f"Shared Harris + ANMS detections | ratio threshold {ratio_threshold:g}")
     fig.tight_layout()
     plt.show()
     plt.close(fig)

@@ -27,9 +27,9 @@ def _occupied_cells(points, shape, cells=4):
     return len(set(zip(xs, ys)))
 
 
-def show_anms(image, keep=100):
+def show_anms(image, keep=100, robust=0.9):
     points, strengths = HarrisFeatureDetector().detect_points(image)
-    selected = anms(points, strengths, keep=keep)
+    selected = anms(points, strengths, keep=keep, robust=robust)
     strongest = points[np.argsort(strengths)[-len(selected):]]
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     for ax, chosen, title in zip(axes, (strongest, selected),
