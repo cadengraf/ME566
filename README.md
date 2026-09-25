@@ -18,7 +18,7 @@ pip install -r requirements.txt
 3. Open the notebook:
 
 ```powershell
-python -m notebook homework/hw1.ipynb
+python -m notebook homework/.ipynb
 jupyter server list
 
 # Ctrl + click on the link with  the token
