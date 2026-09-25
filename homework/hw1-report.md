@@ -2,7 +2,7 @@
 
 **AI use:** OpenAI Codex was used to help write and revise the Python code, explain the methods and equations, and organize and edit this report.
 
-The code is in [hw1.ipynb](hw1.ipynb) and [utils](utils/). Environment setup and notebook instructions are in the [README](../README.md). Paths written in code refer to the repository root unless stated otherwise.
+The code is in [hw1.ipynb](hw1.ipynb) and [utils](utils/). Environment setup and notebook instructions are in this homework folder's [README](README.md). Paths written in code refer to the repository root unless stated otherwise.
 
 Input images
 

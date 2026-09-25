@@ -2,18 +2,7 @@
 
 The executable figures and tables are in [hw2.ipynb](hw2.ipynb). The Python implementations are in [`utils/`](utils/), with experiment orchestration in [`FeatureComparison.py`](utils/FeatureComparison.py). Install [`requirements.txt`](../requirements.txt) and run the notebook from the repository root or `homework_2`. The first cell prints package versions for the exact run. OpenCV is the main image-processing library; the DoG implementation uses `skimage.feature.blob_dog` for scale-space peaks.
 
-### How to reproduce the notebook
-
-From the repository root in Windows PowerShell, use a working Python installation and run:
-
-```powershell
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Open `homework_2/hw2.ipynb`, select `.venv` as its kernel, and run the cells from top to bottom. Each question's code calls functions in `homework_2/utils`. Edit the settings cell near the top, then rerun the affected cells. Changing a threshold updates the figures and tables produced by the notebook. The notebook's outputs include three detector-overlay figures, the detector table and trends, the ANMS comparison, descriptor visualizations, match overlays, descriptor confusion matrices, and the ROC curve. Running a cell again replaces its saved output with values from the current environment.
-
+For Linux setup and notebook instructions, see the [Homework 2 README](README.md).
 
 ## 1. Detector comparison
 
@@ -100,3 +89,7 @@ On these camera pairs, SIFT yielded the highest accepted-match precision and the
 ## 4. SIFT ratio-test ROC
 
 SIFT is the chosen matching method. Vary its acceptance threshold $\tau$ over all observed ratios, accepting when $\rho<\tau$. At each threshold, $TPR=TP/(TP+FN)$ and $FPR=FP/(FP+TN)$. The ROC plots TPR against FPR; area under it summarizes separation over thresholds. The saved baseline plot has **AUC = 0.867** using the approximate geometric labels above. A ratio threshold of 0.75 is the reported operating point, not a universal optimum. Smaller thresholds reject ambiguous matches and tend to lower FPR while also discarding some correct matches. A practical threshold should be selected from a separate validation set for an acceptable FPR; selecting and evaluating it on these same pairs would overstate performance. The 5-pixel correctness tolerance and the 3-pixel RANSAC tolerance also affect the ROC.
+
+## AI use disclosure
+
+I wrote the main assignment code. I used OpenAI Codex to help write helper functions and to revise and organize this report.
