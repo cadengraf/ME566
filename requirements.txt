@@ -1,4 +1,8 @@
-opencv-python
+opencv-contrib-python
 numpy
 matplotlib
 notebook
+ipykernel
+scikit-image
+scikit-learn
+pandas

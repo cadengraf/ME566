@@ -8,12 +8,15 @@ class HarrisFeatureDetector:
         self.k = k
 
     def detect_corners(self, gray):
-        dst = cv2.cornerHarris(src=gray, blockSize=self.block_size, ksize=self.ksize, k=self.k)
-        dst = cv2.dilate(dst, None)
-        return dst
+        return cv2.cornerHarris(src=np.float32(gray), blockSize=self.block_size,
+                                ksize=self.ksize, k=self.k)
+
+    def detect_points(self, gray, threshold=0.01):
+        response = self.detect_corners(gray)
+        maxima = response == cv2.dilate(response, None)
+        ys, xs = np.where(maxima & (response > threshold * response.max()))
+        return np.column_stack((xs, ys)).astype(np.float32), response[ys, xs]
 
     def draw_corners(self, image, dst, threshold=0.01):
         image[dst > threshold * dst.max()] = [0, 0, 255]
         return image
-    
-    
