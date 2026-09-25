@@ -14,13 +14,13 @@ python -m venv .venv-hw2
 python -m pip install -r requirements.txt
 ```
 
-Open `homework_2/hw2.ipynb`, select `.venv-hw2` as its kernel, and run the cells from top to bottom. If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process Bypass` in that window, then retry the activation command. The first cell should report 15 translation, 21 scale, and 21 rotation frames, all 1456 × 1088 pixels. Missing counts mean the notebook is running from an unexpected directory or the image folders are incomplete. Each question's code calls functions in `homework_2/utils`; the equations, parameters, and interpretation are below. The notebook's outputs include three detector-overlay figures, the detector table and trends, the ANMS comparison, descriptor confusion matrices, and the ROC curve. Running a cell again replaces its saved output with values from the current environment.
+Open `homework_2/hw2.ipynb`, select `.venv-hw2` as its kernel, and run the cells from top to bottom. If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process Bypass` in that window, then retry the activation command. The first cell should report 15 translation, 21 scale, and 21 rotation frames, all 1456 × 1088 pixels. Missing counts mean the notebook is running from an unexpected directory or the image folders are incomplete. Each question's code calls functions in `homework_2/utils`; the equations, parameters, and interpretation are below. The notebook's outputs include three detector-overlay figures, the detector table and trends, the ANMS comparison, descriptor visualizations, match overlays, descriptor confusion matrices, and the ROC curve. Running a cell again replaces its saved output with values from the current environment.
 
 | Notebook question | Main calls | Expected evidence |
 |---|---|---|
 | 1. Detectors | `load_sequences`, `show_detector_views`, `compare_detectors`, `show_detector_results` | Camera-view overlays, feature counts, detection times, and repeatability by motion. |
-| 2. Selection | `show_anms` | Strongest-response versus ANMS points, with 4×4 grid coverage. |
-| 3. Descriptors | `compare_descriptors`, `show_confusion_matrices` | Mean pair times and SIFT, BRIEF, ORB confusion matrices. |
+| 2. Selection | `utils.ANMS.show_anms` | Strongest-response versus ANMS points, with 4×4 grid coverage. |
+| 3. Descriptors | `show_descriptor_visualization`, `compare_descriptors`, `show_confusion_matrices`, `show_descriptor_summary`, `show_match_visualization` | Descriptor vectors, correspondences, mean pair times, quality bars, and SIFT, BRIEF, ORB confusion matrices. |
 | 4. ROC | `show_sift_roc` | SIFT ratio-test ROC and AUC. |
 
 ## 1. Detector comparison
@@ -95,7 +95,7 @@ Sources: [OpenCV SIFT](https://docs.opencv.org/4.12.0/d7/d60/classcv_1_1SIFT.htm
 
 For each sampled image pair, `cv2.BFMatcher(norm).knnMatch(..., k=2)` finds the nearest and second-nearest target descriptor for every reference descriptor. The match score is $\rho=d_1/\max(d_2,10^{-12})$; accept the nearest match when $\rho<0.75$. The SIFT-derived homography from Section 1 provides an **approximate geometric label**: a candidate nearest-neighbor match is labelled correct if its target lies within 5 pixels of the projected reference keypoint. Failed registrations are omitted. The matching timer includes Harris+ANMS detection, descriptor extraction for both images, nearest-neighbor search, and geometric scoring; it excludes file loading and the separate homography estimation. Thus it measures this complete per-pair matching pipeline, not descriptor extraction alone. The SIFT-based geometric labels can favor SIFT and are not manually verified ground truth.
 
-The confusion matrix has rows *geometrically wrong, geometrically right* and columns *rejected, accepted*. With those axes, the cells are [TN, FP; FN, TP]. Accepted-match precision is $TP/(TP+FP)$. The saved run printed:
+The notebook now displays one 128-value SIFT vector as an 8 × 16 intensity map and one 256-bit vector each for BRIEF and ORB as 16 × 16 binary maps. The maps are reshaped for display; neighboring cells in these displays do not imply neighboring image locations. It also overlays the best accepted correspondences on one sampled image pair (green for within 5 pixels of the homography projection, red otherwise). These figures make the descriptor representation and matching errors visible alongside the numerical results. The confusion matrix has rows *geometrically wrong, geometrically right* and columns *rejected, accepted*. With those axes, the cells are [TN, FP; FN, TP]. Accepted-match precision is $TP/(TP+FP)$. The earlier saved run printed the following values. Rerun the notebook to update them after this visualization change:
 
 | Descriptor | TN | FP | FN | TP | Mean pair time (ms) | Accepted precision |
 |---|---:|---:|---:|---:|---:|---:|
@@ -123,7 +123,8 @@ For exact defaults, descriptor `SIFT_create()` uses `nfeatures=0` (no requested 
 | [`utils/ImageReader.py`](utils/ImageReader.py) | Loads original camera JPEGs in numeric order. |
 | [`utils/DoG.py`](utils/DoG.py), [`utils/Harris.py`](utils/Harris.py), [`utils/Shi-Tomasi.py`](utils/Shi-Tomasi.py), [`utils/FAST.py`](utils/FAST.py) | Implement the four detector interfaces. |
 | [`utils/SIFT.py`](utils/SIFT.py), [`utils/BRIEF.py`](utils/BRIEF.py), [`utils/ORB.py`](utils/ORB.py) | Compute descriptors at supplied keypoints. |
-| [`utils/FeatureComparison.py`](utils/FeatureComparison.py) | Selects frames, computes ANMS and homographies, times methods, labels matches, and draws the tables and plots. |
+| [`utils/ANMS.py`](utils/ANMS.py) | Implements ANMS and its spatial coverage figure. |
+| [`utils/FeatureComparison.py`](utils/FeatureComparison.py) | Selects frames, computes homographies, times methods, labels matches, and draws descriptor and matching figures. |
 
 ## Extra credit
 

@@ -16,6 +16,7 @@ from .Harris import HarrisFeatureDetector
 from .SIFT import SIFT
 from .ORB import ORB
 from .BRIEF import BRIEF
+from .ANMS import anms
 from .ImageReader import read_images_from_folder
 ShiTomasi = import_module(".Shi-Tomasi", __package__).ShiTomasi
 
@@ -83,21 +84,6 @@ def show_detector_views(sequences, motion):
     plt.close(fig)
 
 
-def anms(points, strengths, keep=300, robust=0.9):
-    """Retain points with the largest distance to a substantially stronger point."""
-    points = np.asarray(points, np.float32).reshape(-1, 2)
-    strengths = np.asarray(strengths, np.float32)
-    if len(points) <= keep:
-        return points
-    radii = np.full(len(points), np.inf)
-    for i in range(len(points)):
-        stronger = strengths > strengths[i] / robust
-        stronger[i] = False
-        if np.any(stronger):
-            radii[i] = np.min(np.sum((points[stronger] - points[i]) ** 2, axis=1))
-    return points[np.argsort(radii)[-keep:]]
-
-
 def detect(gray, method):
     if method == "DoG":
         return DoGFeatureDetector(min_sigma=1, max_sigma=12,
@@ -121,33 +107,6 @@ def show_detector_features(image):
         ax.axis("off")
     fig.tight_layout()
     plt.show()
-
-
-def _occupied_cells(points, shape, cells=4):
-    if not len(points):
-        return 0
-    h, w = shape
-    xs = np.clip((points[:, 0] * cells / w).astype(int), 0, cells - 1)
-    ys = np.clip((points[:, 1] * cells / h).astype(int), 0, cells - 1)
-    return len(set(zip(xs, ys)))
-
-
-def show_anms(image, keep=100):
-    points, strengths = detect(image, "Harris")
-    selected = anms(points, strengths, keep=keep)
-    strongest = points[np.argsort(strengths)[-len(selected):]]
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    for ax, chosen, title in zip(axes, (strongest, selected),
-                                 ("Highest Harris responses", "Harris + ANMS")):
-        ax.imshow(image, cmap="gray")
-        ax.scatter(chosen[:, 0], chosen[:, 1], s=8, c="red")
-        coverage = _occupied_cells(chosen, image.shape)
-        ax.set_title(f"{title}: {len(chosen)} points, {coverage}/16 grid cells")
-        ax.axis("off")
-    fig.tight_layout()
-    plt.show()
-    plt.close(fig)
-    return selected
 
 
 def homography(a, b):
@@ -324,3 +283,118 @@ def show_sift_roc(records):
     plt.legend()
     plt.grid(True)
     plt.show()
+
+
+def show_descriptor_visualization(image):
+    """Display common Harris points and one descriptor vector from each method."""
+    keypoints = _keypoints(image)
+    fig, axes = plt.subplots(2, 3, figsize=(16, 7),
+                             gridspec_kw={"height_ratios": [2, 1]})
+    for col, kind in enumerate(DESCRIPTORS):
+        kp, desc = {"SIFT": SIFT, "BRIEF": BRIEF, "ORB": ORB}[kind]().compute(
+            image, keypoints)
+        ax = axes[0, col]
+        ax.imshow(image, cmap="gray")
+        if kp:
+            xy = np.asarray([point.pt for point in kp])
+            ax.scatter(xy[:, 0], xy[:, 1], s=9, facecolors="none",
+                       edgecolors="#00e5ff", linewidths=0.5)
+            chosen = len(kp) // 2
+            x, y = kp[chosen].pt
+            ax.scatter([x], [y], s=100, facecolors="none",
+                       edgecolors="yellow", linewidths=2)
+        ax.set_title(f"{kind}: {len(kp)} descriptors")
+        ax.axis("off")
+        vector_ax = axes[1, col]
+        if desc is not None and len(desc):
+            vector = desc[chosen]
+            if kind == "SIFT":
+                vector_ax.imshow(vector.reshape(8, 16), cmap="magma", aspect="auto")
+                vector_ax.set_title("Selected 128 float values (8 × 16)")
+            else:
+                bits = np.unpackbits(vector).reshape(16, 16)
+                vector_ax.imshow(bits, cmap="gray_r", vmin=0, vmax=1,
+                                 interpolation="nearest", aspect="auto")
+                vector_ax.set_title("Selected 256 binary tests (16 × 16)")
+            vector_ax.set_xticks([])
+            vector_ax.set_yticks([])
+    fig.suptitle("One Harris detection scheme + ANMS; yellow = displayed descriptor")
+    fig.tight_layout()
+    plt.show()
+    plt.close(fig)
+
+
+def show_match_visualization(a, b, H, ratio_threshold=0.75, limit=30):
+    """Show accepted correspondences, green for geometrically right and red for wrong."""
+    fig, axes = plt.subplots(3, 1, figsize=(15, 14))
+    for ax, kind in zip(axes, DESCRIPTORS):
+        ka, da = _descriptor(a, kind)
+        kb, db = _descriptor(b, kind)
+        canvas = np.concatenate((a, b), axis=1)
+        ax.imshow(canvas, cmap="gray")
+        if da is not None and db is not None and len(db) >= 2:
+            norm = {"SIFT": SIFT, "BRIEF": BRIEF, "ORB": ORB}[kind].norm
+            pairs = cv2.BFMatcher(norm).knnMatch(da, db, k=2)
+            accepted = [(m, m.distance / max(n.distance, 1e-12))
+                        for pair in pairs if len(pair) == 2
+                        for m, n in [pair] if m.distance < ratio_threshold * n.distance]
+            accepted.sort(key=lambda item: item[1])
+            projected = (cv2.perspectiveTransform(
+                np.float32([point.pt for point in ka]).reshape(-1, 1, 2), H
+            ).reshape(-1, 2) if H is not None else None)
+            correct = 0
+            for m, _ in accepted[:limit]:
+                x1, y1 = ka[m.queryIdx].pt
+                x2, y2 = kb[m.trainIdx].pt
+                right = (projected is not None and
+                         np.linalg.norm(projected[m.queryIdx] - (x2, y2)) <= 5)
+                correct += right
+                color = "#52e080" if right else "#ff5b5b"
+                ax.plot((x1, x2 + a.shape[1]), (y1, y2), color=color,
+                        alpha=0.8, linewidth=0.8)
+            ax.set_title(f"{kind}: {len(accepted)} accepted; displayed {min(limit, len(accepted))} "
+                         f"best ratios ({correct} geometrically right)")
+        ax.axis("off")
+    fig.suptitle("Ratio < 0.75 | green: within 5 px of homography | red: farther away")
+    fig.tight_layout()
+    plt.show()
+    plt.close(fig)
+
+
+def show_descriptor_summary(records, ratio_threshold=0.75):
+    """Plot matching speed and quality next to three labeled confusion matrices."""
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    for col, kind in enumerate(DESCRIPTORS):
+        rows = [row for row in records if row[1] == kind]
+        if not rows:
+            axes[0, col].axis("off")
+            axes[1, col].axis("off")
+            continue
+        ratios = np.concatenate([row[2] for row in rows])
+        labels = np.concatenate([row[3] for row in rows])
+        matrix = confusion_matrix(labels, ratios < ratio_threshold,
+                                  labels=[False, True])
+        ax = axes[0, col]
+        ax.imshow(matrix, cmap="Blues")
+        for (i, j), value in np.ndenumerate(matrix):
+            ax.text(j, i, str(value), ha="center", va="center",
+                    color="white" if value > matrix.max() / 2 else "black", fontsize=15)
+        ax.set_xticks((0, 1), ("Rejected", "Accepted"))
+        ax.set_yticks((0, 1), ("Wrong", "Right"))
+        ax.set_xlabel("Ratio-test decision")
+        ax.set_ylabel("Geometric label")
+        ax.set_title(f"{kind} confusion matrix")
+        precision = matrix[1, 1] / max(matrix[:, 1].sum(), 1)
+        recall = matrix[1, 1] / max(matrix[1].sum(), 1)
+        mean_ms = np.mean([row[4] for row in rows])
+        ax = axes[1, col]
+        ax.bar(("Precision", "Recall"), (precision, recall),
+               color=("#2868a2", "#4ba881"))
+        ax.set_ylim(0, 1)
+        ax.set_title(f"{mean_ms:.1f} ms/pair | {len(labels)} candidates")
+        for i, value in enumerate((precision, recall)):
+            ax.text(i, value + 0.02, f"{value:.2f}", ha="center")
+    fig.suptitle("Shared Harris + ANMS detections | ratio threshold 0.75")
+    fig.tight_layout()
+    plt.show()
+    plt.close(fig)
